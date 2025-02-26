@@ -1,0 +1,72 @@
+1. mkdir 로 configServer , shardServer 경로 만듬
+2. mongod --configsvr --replSet config0 --port 27018 --bind_ip 0.0.0.0 --dbpath /db2/data/config0-0 
+컨픽서버 만들기, config0이란 이름으로 27018포트를 쓰며 전체 접근 허용, 만든 경로를 경로로 지정
+3.rs.initiate(
+{
+_id : "config0",
+configsvr:true,
+members: [
+{_id:0, host:"localhost:27018"},
+{_id:1, host:"localhost:27019"},
+{_id:2, host:"localhost:27020"}
+]
+}
+)
+레플셋 시작, 이름 config0 컨픽서버 확인, 멤버 지정
+4.mongod --shardsvr --replSet shard0 --port 27021 --bind_ip 0.0.0.0 --dbpath /db2/data/shard0-0 
+샤드서버 만들기, shard0 이란 이름으로 27021포트를 쓰며 전체 접근 허용, 만든 경로를 경로로 지정
+5.rs.initiate(
+{
+_id : "shard0",
+members: [
+{_id:0, host:"localhost:27021"},
+{_id:1, host:"localhost:27022"},
+{_id:2, host:"localhost:27023",arbiterOnly: true}
+]
+}
+)
+
+arbiterOnly 는 투표 전용으로 서버를 홀수로 해야 투표시 primary결정이 나기에 홀수를 맞춰주기 위한 서버, 실제 데이터를 저장하지는 않음(여기선 레플셋으로 미러링하지 않음)
+이 레플셋이 결국 하나의 서버로 보면 됨
+각각의 서버는 서로를 미러링하여 안정성을 더할 뿐
+
+6.mongos --configdb config0/localhost:27018 --port 20000
+라우터 서버 만들기, 20000으로 접근하면 컨픽서버로 연결해줌
+
+7.use admin 관리자로 들어가서
+db.adminCommand({
+  setDefaultRWConcern: 1,
+  defaultWriteConcern: { w: "majority" }
+})
+전역의 RW 읽고쓰기 우려를 majority 로 설정, (과반수)
+
+8. 샤드 추가 레플셋이름과 네트워크위치로 추가
+sh.addShard("shard0/localhost:27021")
+sh.addShard("shard1/localhost:27031")
+sh.addShard("shard2/localhost:27041")
+
+9. 아비터온리 서버를 제거(primary 가 설정되었으므로)
+각 샤드 0
+rs.remove("localhost:27023");
+각 샤드 1
+rs.remove("localhost:27033");
+각 샤드 2
+rs.remove("localhost:27043");
+
+10.
+use config 컨픽 사용
+db.shards.find() 샤드 확인
+
+11.
+use test2345 test2345 로 접속
+
+12000개 insert
+for(var i = 1; i<12001; i++){
+db.test.insertOne({x:i,ename:i,sal:100})
+}
+
+각 샤드의 분포 확인
+db.test.getShardDistribution()
+
+각 레플셋 안에서도 서버간에 트랜잭션을 걸어 일관성을 가능한 유지
+그렇기에 지연과 서버다운에 의한 데이터 손실은 발생함

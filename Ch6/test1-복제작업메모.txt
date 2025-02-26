@@ -1,0 +1,109 @@
+연습하기.
+
+현재 버전 8.0.4, 테스트 확인함.
+
+각 구역 폴더 만들기. 
+mkdir c:\db\data\rs0-0
+mkdir c:\db\data\rs0-1
+mkdir c:\db\data\rs0-2
+
+	1. C:/db/data/rs0-0
+	2. C:/db/data/rs0-1
+	3. C:/db/data/rs0-2
+
+명령어 창1 현제, 10.100.201.87
+포트 27018에 rs0이라는 레플리카 이름으로 서버 만들기 허용ip 는 전체 데이터베이스위치는 /db/data/rs0-0
+mongod --replSet rs0 --port 27018 --bind_ip 0.0.0.0 --dbpath /db/data/rs0-0
+
+명령어 창2
+포트 27019에 rs0이라는 레플리카 이름으로 서버 만들기 허용ip 는 local만 데이터베이스위치는 /db/data/rs0-1
+mongod --replSet rs0 --port 27019 --bind_ip localhost --dbpath /db/data/rs0-1
+
+명령어 창3
+포트 27020에 rs0이라는 레플리카 이름으로 서버 만들기 허용ip 는 local만 데이터베이스위치는 /db/data/rs0-2
+mongod --replSet rs0 --port 27020 --bind_ip localhost --dbpath /db/data/rs0-2
+
+명령어 창4 여기서 새로 접속 -> 총 명령어창 4개.
+조장. 자기 서버 
+mongo --port 27018(예전버전 mongodb4버전에서 사용)
+
+명령어_변경, 
+mongosh --port 27018
+
+레플리카셋 시작 id(이름)은 rs0, 위에서 만든 서버 셋을 members 로 등록
+rs.initiate(
+{
+_id : "rs0",
+members: [
+{_id:0, host:"localhost:27018"},
+{_id:1, host:"localhost:27019"},
+{_id:2, host:"localhost:27020"}
+]
+}
+)
+
+조회 
+	- rs.status()
+복제세트 상세정보 조회.
+간단 조회: db.isMaster()
+
+
+확인. 
+쉘에서, 프라이머리에서 글 쓰기 샘플 하나, 
+확인은 ,27019, 27020,
+1) 쉘에서, 가능
+2) 컴파스에도 가능, 
+
+프라이머리에 접속 후(명령어창 4번째에서 계속 작업.)
+-exit 
+몽고디비 서버 접속 명령어
+-mongo --port 27019 
+-mongosh --port 27019 
+-
+db.replicationTest2.insertOne({hello2: 'world2'})
+
+세커더리에 접속 해서 
+-
+db.replicationTest2.find()
+
+에러 발생 기본값으로 세컨더리에서 몽고디비 셸 사용 못하게 설정되어 있음.
+rs.slaveOk()
+
+db.getMongo().setReadPref("primaryPreferred");
+
+rs.stepDown();
+
+📌 설명
+현재 Primary를 Step Down(Primary 역할을 포기)하여 Secondary 중 하나가 승격됨.
+rs.freeze(0);
+
+📌 설명
+
+특정 Secondary가 Primary로 승격되지 않도록 동결.
+
+
+윈도우 환경 설정 파일 
+설치된 디렉터리 /bin/mongod.cfg 
+여기서 접속 허용할 ip 등 옵션 설정.
+
+cfg = rs.conf();
+cfg.members[0].priority = 2;
+rs.reconfig(cfg);
+
+use local
+db.oplog.rs.find().limit(1).pretty()
+
+
+rs.printSlaveReplicationInfo()
+
+
+상태조회.
+rs.status()
+세컨더리에서 명령어 실행시 필요.
+rs.slaveOk()
+
+조원들 통신 확인 
+cmd -> ping 10.100.201.x
+
+
+이렇게 3개의 서버는 동기화되며 이중 하나가 다운되더라도 다른 서버가 대신 primary 가 되어 작동함
