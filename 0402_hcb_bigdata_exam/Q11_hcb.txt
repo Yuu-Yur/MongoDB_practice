@@ -1,0 +1,87 @@
+서버 경로 만들기
+mkdir c:\bigdata\exam\config0-0
+mkdir c:\bigdata\exam\config0-1
+mkdir c:\bigdata\exam\config0-2
+mkdir c:\bigdata\exam\shard0-0
+mkdir c:\bigdata\exam\shard0-1
+mkdir c:\bigdata\exam\shard0-2
+mkdir c:\bigdata\exam\shard1-0
+mkdir c:\bigdata\exam\shard1-1
+mkdir c:\bigdata\exam\shard1-2
+mkdir c:\bigdata\exam\shard2-0
+mkdir c:\bigdata\exam\shard2-1
+mkdir c:\bigdata\exam\shard2-2
+
+서버목적, 레플셋 이름, 포트, 접근허용ip, 서버 경로 지정하여 서버 켜기
+mongod --configsvr --replSet config0 --port 27018 --bind_ip localhost --dbpath c:\bigdata\exam\config0-0
+mongod --configsvr --replSet config0 --port 27019 --bind_ip localhost --dbpath c:\bigdata\exam\config0-1
+mongod --configsvr --replSet config0 --port 27020 --bind_ip localhost --dbpath c:\bigdata\exam\config0-2
+
+mongod --shardsvr --replSet shard0 --port 27021 --bind_ip localhost --dbpath c:\bigdata\exam\shard0-0
+mongod --shardsvr --replSet shard0 --port 27022 --bind_ip localhost --dbpath c:\bigdata\exam\shard0-1
+mongod --shardsvr --replSet shard0 --port 27023 --bind_ip localhost --dbpath c:\bigdata\exam\shard0-2
+
+mongod --shardsvr --replSet shard1 --port 27031 --bind_ip localhost --dbpath c:\bigdata\exam\shard1-0
+mongod --shardsvr --replSet shard1 --port 27032 --bind_ip localhost --dbpath c:\bigdata\exam\shard1-1
+mongod --shardsvr --replSet shard1 --port 27033 --bind_ip localhost --dbpath c:\bigdata\exam\shard1-2
+
+mongod --shardsvr --replSet shard2 --port 27041 --bind_ip localhost --dbpath c:\bigdata\exam\shard2-0
+mongod --shardsvr --replSet shard2 --port 27042 --bind_ip localhost --dbpath c:\bigdata\exam\shard2-1
+mongod --shardsvr --replSet shard2 --port 27043 --bind_ip localhost --dbpath c:\bigdata\exam\shard2-2
+
+각 레플셋 중 하나에 접근하여 레플셋 시동, 컨픽서버 1개, 샤드서버 3개 의 총 네개의 레플셋을 시동시켜야함
+mongosh --port 27041
+rs.initiate(
+    {
+        _id : "shard2",
+        members: [
+            {_id:0, host:"localhost:27041"},
+            {_id:1, host:"localhost:27042"},
+            {_id:2, host:"localhost:27043"}
+        ]
+    }
+)
+
+라우터 서버 켜기, 컨픽서버 지정하고, 20000 포트로 접근하여 서버 사용하게 설정
+mongos --configdb config0/localhost:27018 --port 20000
+
+20000 포트로 접근
+mongosh --port 20000
+
+admin 접근해서 쓰기읽기우려 세팅 켜고 쓰기우려를 과반수로 설정
+use admin
+db.adminCommand({
+setDefaultRWConcern: 1,
+defaultWriteConcern: { w: "majority" }
+})
+
+
+샤드 서버 설정
+sh.addShard("shard0/localhost:27021")
+sh.addShard("shard1/localhost:27031")
+sh.addShard("shard2/localhost:27041")
+
+test 가 sharding 사용 가능하게 설정
+sh.enableSharding("test")
+
+test 접근
+use test
+test.test 컬렉션 에 인덱스 생성
+db.test.createIndex({x:1})
+test.test를 샤드컬렉션으로 설정
+sh.shardCollection("test.test",{
+x:"hashed"
+})
+ 
+설정에서 샤드 확인해보기
+use config
+db.shards.find()
+
+
+test 로 접근해서 insert
+use test
+for(var i = 1; i<10001; i++){
+db.test.insertOne({x:i,ename:i,sal:100})
+}
+샤드 분배 확인
+db.test.getShardDistribution()
